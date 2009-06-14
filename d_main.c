@@ -2,6 +2,7 @@
 #include <malloc.h>
 #include <stdlib.h>
 #include <time.h>
+#include <md5.h>
 #include <string.h>
 
 char draw[99];
@@ -13,162 +14,134 @@ void shuffle(unsigned char data[], int len);
 int add_to_card(int card, int num);
 
 
-char cards[6][3][9];
-char blanks[18];
+int cards[6][3][9];
+struct md5s {
+    long seed;
+    unsigned char md5_fp[16];
+    struct md5s *next;
+};
 
+void check_list(struct md5s *head);
 
 int main(int argc, char *argv[])
 {
     int card;
     int i;
+    struct md5s *md5_list;
+    struct md5s *md5_head;
     long seed = 1;
-    int blnk;
-	int rowtot, coltot[18];
-    int num, row, col;
+	int num, row, col;
 
+    if ((md5_head = calloc(1, sizeof(struct md5s))) == 0) {
+	printf("Out of memory\n");
+	exit(1);
+    }
 
+    md5_list = md5_head;
 
 
     while (seed++) {
 
-	if (seed == 4)
-	    seed = 1;
+	if(seed == 4) seed = 1 ;
 	srand48(seed);
 	if (seed % 5000 == 0)
 	    printf("Seed: %ld\n", seed);
 
-	/* Clear the card */
 	memset(cards, 0, sizeof(cards));
 
-	/* Add blanks */
-	for (col = 0; col < 9; col++) {
-	    blnk = 8;
-	    if (col == 0)
-		blnk = 9;
-	    if (col == 8)
-		blnk = 7;
-	    memset(blanks, 0, sizeof(blanks));
-	    for (i = 0; i < blnk; i++)
-		blanks[i] = 100;
-		for(i = 0 ; i < sizeof(blanks) ; i++)
-			printf("%02x ", blanks[i]);
-		printf("\n");
-	    shuffle((unsigned char *) blanks, sizeof(blanks)+1);
-		for(i = 0 ; i < sizeof(blanks) ; i++)
-			printf("%02x ", blanks[i]);
-		printf("\n");
-	    i = 0;
-	    for (card = 0; card < 6; card++)
-		for (row = 0; row < 3; row++)
-		    cards[card][row][col] = blanks[i++];
-
-	}
-	for (card = 0; card < 6; card++) {
-	    printf("Card: %d\n", card);
-	    for (row = 0; row < 3; row++) {
-		for (col = 0; col < 9; col++) {
-		    num = cards[card][row][col];
-		    switch (num) {
-		    case 100:
-			printf("XX ");
-			break;
-		    case 0:
-			printf("   ");
-			break;
-		    default:
-			printf("%02d ", num);
-			break;
-		    }
-		}
-		printf("\n");
-	    }
-	}
-
-
-	/* Add numbers */
-	for (num = 1; num < 91; num++) {
+	for (i = 1; i < 91; i++) {
+	do {
 	    card = get_rnd(0, 5);
-	    i = 0;
-	    while (1) {
-		if (i++ > 7) {
-		    for (card = 0; card < 6; card++) {
-			printf("Card: %d\n", card);
-			for (row = 0; row < 3; row++) {
-			    for (col = 0; col < 9; col++) {
-				num = cards[card][row][col];
-				switch (num) {
-				case 100:
-				    printf("XX ");
-				    break;
-				case 0:
-				    printf("   ");
-				    break;
-				default:
-				    printf("%02d ", num);
-				    break;
-				}
-			    }
-			    printf("\n");
-			}
-		    }
-		    exit(1);
 		}
-		if (add_to_card(card, num) == 1)
-		    break;
-		printf("%d ", card);
-		if (++card == 6)
-		    card = 0;
-	    }
+	    while(add_to_card(card, i)==0);
 
 	}
+	md5_calc(md5_list->md5_fp, (unsigned char *) cards, sizeof(cards));
+	md5_list->seed = seed;
 
-	for (card = 0; card < 6; card++) {
+    for (card = 0; card < 6; card++) {
 	    printf("Card: %d\n", card);
 	    for (row = 0; row < 3; row++) {
 		for (col = 0; col < 9; col++) {
 		    num = cards[card][row][col];
-		    switch (num) {
-		    case 100:
-			printf("XX ");
-			break;
-		    case 0:
-			printf("   ");
-			break;
-		    default:
+		    if (num > 0)
 			printf("%02d ", num);
-			break;
-		    }
+		    else
+			printf("   ");
+
 		}
 		printf("\n");
 	    }
 	}
 
+	printf("Sig: ");
+	for (i = 0; i < 16; i++)
+	    printf("%02x", md5_list->md5_fp[i]);
+	printf("\n");
 
+	if ((md5_list->next = calloc(1, sizeof(struct md5s))) == 0) {
+	    printf("Out of memory\n");
+	    exit(1);
+	}
+	md5_list = md5_list->next;
+	check_list(md5_head);
     }
 
 
 
-    return (0);
+	return(0);
+}
+
+void check_list(struct md5s *head)
+{
+    struct md5s *md5_comp;
+    struct md5s *md5_list;
+	int i;
+
+    md5_list = head;
+    md5_comp = head->next;
+
+    while (1) {
+	if (md5_comp->seed == 0)
+		break;
+	if (memcmp
+	    (md5_list->md5_fp, md5_comp->md5_fp,
+	     sizeof(md5_list->md5_fp)) == 0) {
+	    printf("Duplicate found!\n");
+	    printf("Seed: %ld\tSig: ", md5_list->seed);
+	    for (i = 0; i < 16; i++)
+		printf("%02x", md5_list->md5_fp[i]);
+	    printf("\n");
+	    printf("Seed: %ld\tComp Sig: ", md5_comp->seed);
+	    for (i = 0; i < 16; i++)
+		printf("%02x", md5_comp->md5_fp[i]);
+	    printf("\n");
+	}
+//	if (md5_comp->seed % 5000 == 0)
+	if (md5_comp->next != 0)
+	    md5_comp = md5_comp->next;
+	else
+	    break;
+    }
 }
 
 int add_to_card(int card, int num)
 {
-    int row, col, ok = 0;
+    int row, col, ok=0;
 
     col = (int) (num / 10);
     if (num == 90)
 	col = 8;
 
-    printf("Fitting num %d onto card %d col %d\n", num, card, col);
     for (row = 0; row < 3; row++) {
 	if (cards[card][row][col] == 0) {
 	    cards[card][row][col] = num;
-	    ok = 1;
+		ok=1;
 	    break;
 	}
     }
 
-    return (ok);
+	return(ok);
 }
 
 /* Random shuffle */
